@@ -1,0 +1,38 @@
+---
+- name: Process Job (String or Dict)
+  block:
+    - name: Set job name
+      set_fact:
+        job_name: "{{ item if item is string else item.keys() | first }}"
+        job_data: "{{ item if item is string else item[job_name] }}"
+
+    - name: Wait for dependencies to be completed
+      when: job_data is not string and job_data.dependency is defined
+      block:
+        - name: Check if dependency jobs are completed
+          command: "echo {{ item }}"
+          loop: "{{ job_data.dependency }}"
+          register: dependency_status
+
+        - name: Fail if any dependency is not completed
+          fail:
+            msg: "Dependency job {{ item.item }} has not been completed."
+          when: dependency_status.results | selectattr('rc', 'ne', 0) | list
+
+    - name: Execute predecessor scripts if available
+      when: job_data is not string and job_data.predecessor_script is defined
+      block:
+        - name: Run predecessor script
+          command: "python3 {{ item.split(':')[0] }}"
+          loop: "{{ job_data.predecessor_script | dict2items | map(attribute='key') | list }}"
+
+    - name: Execute the main job
+      when: item is string or (job_data is not string and job_data.predecessor_script is not defined)
+      command: "echo Running job {{ job_name }}"
+
+    - name: Execute successor scripts if available
+      when: job_data is not string and job_data.successor_script is defined
+      block:
+        - name: Run successor script
+          command: "python3 {{ item.split(':')[0] }}"
+          loop: "{{ job_data.successor_script | dict2items | map(attribute='key') | list }}"
