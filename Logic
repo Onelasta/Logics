@@ -1,0 +1,12 @@
+---
+- name: Execute CADISK jobs
+  hosts: localhost
+  vars_files:
+    - vars.yml  # The file where you keep your job definitions
+
+  tasks:
+    - name: Run jobs
+      include_tasks: run_jobs.yml
+      loop: "{{ features_list.archive.jobs }}"
+      loop_control:
+        label: "{{ item if item is string else item.keys() | first }}"
