@@ -1,0 +1,49 @@
+---
+- name: Submit JCL jobs with dependencies on z/OS
+  hosts: zos_host
+  gather_facts: false
+  vars_files:
+    - vars/main.yml   # Import the jobs and dependencies
+
+  tasks:
+    - name: Submit jobs based on dependencies
+      block:
+        # Iterate over each job in the list
+        - name: Submit a job if all dependencies are met
+          block:
+            # Wait for dependent jobs to complete successfully
+            - name: Wait for dependent jobs to finish
+              block:
+                - name: Check job {{ item }} completion
+                  zos_job_query:
+                    job_name: "{{ item }}"
+                    owner: "{{ ansible_user }}"
+                  register: job_status
+
+                - name: Wait for dependent job {{ item }} to complete
+                  zos_job_output:
+                    job_name: "{{ item }}"
+                  when: job_status.rc == 0  # Ensure job completed successfully
+              loop: "{{ job.depends_on }}"
+
+            # Submit the job once all dependencies are satisfied
+            - name: Submit {{ job.name }}
+              zos_job_submit:
+                src: "{{ job.jcl_file }}"
+              register: job_result
+
+            # Wait for the submitted job to finish
+            - name: Wait for job {{ job.name }} to complete
+              zos_job_output:
+                job_id: "{{ job_result.job_id }}"
+                owner: "{{ ansible_user }}"
+              register: job_output
+
+            - name: Fail if job {{ job.name }} failed
+              fail:
+                msg: "Job {{ job.name }} failed"
+              when: job_output.ret_code.msg != "CC 0000"
+              
+          loop: "{{ jobs }}"
+          loop_control:
+            loop_var: job
