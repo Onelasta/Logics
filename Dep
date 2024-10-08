@@ -1,0 +1,54 @@
+---
+- name: Submit JCL jobs with dependencies on z/OS
+  hosts: zos_host
+  gather_facts: false
+  vars_files:
+    - vars/main.yml  # Load job definitions and dependencies
+
+  tasks:
+    - name: Initialize submitted jobs list
+      set_fact:
+        submitted_jobs: []
+
+    - name: Submit jobs in defined order and handle dependencies
+      block:
+        # Check if all dependencies have been submitted
+        - name: Check if dependencies are completed for {{ job.name }}
+          block:
+            - name: Ensure dependent job {{ item }} is submitted
+              fail:
+                msg: "Dependent job {{ item }} has not been submitted for {{ job.name }}"
+              when: item not in submitted_jobs
+          loop: "{{ job.depends_on }}"
+          when: job.depends_on | length > 0  # Only check dependencies if there are any
+
+        # Submit the job after dependencies are resolved
+        - name: Submit {{ job.name }}
+          zos_job_submit:
+            src: "{{ job.jcl_file }}"
+          register: job_result
+
+        # Wait for the job to complete
+        - name: Wait for job {{ job.name }} to complete
+          zos_job_output:
+            job_id: "{{ job_result.job_id }}"
+            owner: "{{ ansible_user }}"
+          register: job_output
+
+        # Add job to the list of completed/submitted jobs
+        - name: Mark job {{ job.name }} as submitted
+          set_fact:
+            submitted_jobs: "{{ submitted_jobs + [job.name] }}"
+
+        # Fail if the job doesn't complete successfully
+        - name: Fail if job {{ job.name }} failed
+          fail:
+            msg: "Job {{ job.name }} failed with return code {{ job_output.ret_code.msg }}"
+          when: job_output.ret_code.msg != "CC 0000"
+
+      loop: "{{ jobs }}"  # Iterate in the order defined in variables
+      loop_control:
+        loop_var: job
+      retries: 3   # Try multiple times in case dependencies aren't met
+      delay: 10    # Wait between retries (can adjust)
+      until: job.name in submitted_jobs  # Keep retrying until the job is submitted
