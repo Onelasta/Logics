@@ -26,3 +26,27 @@ combine({"price": 0.60})) if x.name == "banana" else x')
               }
             })
           }}
+
+
+
+
+    set_fact:
+        "{{ Status_var }}": >-
+          {{
+            vars[Status_var] | combine({
+              Feature: {
+                'jobs': {
+                  'joblist': (
+                    vars[Status_var][Feature].jobs.joblist
+                    | map('combine', {
+                        'status': (
+                          'inprogress' if item.name == Jobset.name
+                          else item.status
+                        )
+                      })
+                    | list
+                  )
+                }
+              }
+            })
+          }}
