@@ -1,15 +1,20 @@
-    - name: Set job status to in progress
+    - name: Set the path to the joblist using Status_var and feature
       set_fact:
-        feature_status: "{{ lookup('vars', status_var) | combine({ feature: { 'jobs': { 'joblist': joblist } } }) }}"
-      vars:
-        joblist: >
+        joblist_var: "{{ vars[Status_var][feature]['jobs']['joblist'] }}"
+
+    - name: Update job status to 'inprogress' for matching jobset.name
+      set_fact:
+        updated_joblist: >-
           {{
-            feature_status[feature]['jobs']['joblist'] | map(
+            joblist_var | map(
               'combine', 
-              { 'status': 'in progress' }
-            )
+              {'status': 'inprogress'}
+            ) if item.name == jobset.name else item
           }}
-      when: item.name == job.name
-      loop: "{{ feature_list[feature]['jobs']['joblist'] }}"
+      loop: "{{ joblist_var }}"
       loop_control:
-        loop_var: job
+        loop_var: item
+
+    - name: Update the original feature_status with the new joblist
+      set_fact:
+        "{{ Status_var }}": "{{ vars[Status_var] | combine({feature: { 'jobs': { 'joblist': updated_joblist }}}) }}"
