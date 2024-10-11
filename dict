@@ -1,16 +1,16 @@
- - name: Update job status to 'inprogress' in feature_status
+  tasks:
+    - name: Update job status to 'inprogress' in feature_status
       set_fact:
-        updated_feature_status: >-
+        updated_joblist: >-
           {{
-            vars[Status_var][Feature].jobs.joblist
-            | map('combine', {
-                'status': (
-                  'inprogress' if item.name == Jobset.name else item.status
-                )
-              })
-            | list
+            [] | union([
+              {
+                'name': item.name,
+                'status': 'inprogress' if item.name == Jobset.name else item.status
+              } for item in vars[Status_var][Feature].jobs.joblist
+            ])
           }}
-
+    
     - name: Update the feature_status variable
       set_fact:
         "{{ Status_var }}": >-
@@ -18,7 +18,7 @@
             vars[Status_var] | combine({
               Feature: {
                 'jobs': {
-                  'joblist': updated_feature_status
+                  'joblist': updated_joblist
                 }
               }
             })
