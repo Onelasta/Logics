@@ -10,3 +10,19 @@ combine({ 'fruits': (lookup('file', 'inventory.yml') |
 from_yaml).fruits | map('lambda x: (x | 
 combine({"price": 0.60})) if x.name == "banana" else x') 
 | list }) }}
+
+
+        "{{ Status_var }}": >-
+          {{
+            (vars[Status_var]) | combine({
+              'archive': {
+                'jobs': {
+                  'joblist': (vars[Status_var]).archive.jobs.joblist 
+                             | map('lambda item: item | combine({"status": "inprogress"}) 
+                                   if item.name in (feature_list.archive.jobs.joblist | map(attribute="name") | list) 
+                                   else item')
+                             | list
+                }
+              }
+            })
+          }}
