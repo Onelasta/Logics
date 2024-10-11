@@ -1,51 +1,24 @@
+ - name: Update job status to 'inprogress' in feature_status
+      set_fact:
+        updated_feature_status: >-
           {{
-            (lookup('file', 'inventory.yml') | from_yaml) | combine({
-              'fruits': ((lookup('file', 'inventory.yml') | from_yaml).fruits | map('combine', {'price': 0.60} if item.name == 'banana' else item) | list)
-            })
+            vars[Status_var][Feature].jobs.joblist
+            | map('combine', {
+                'status': (
+                  'inprogress' if item.name == Jobset.name else item.status
+                )
+              })
+            | list
           }}
 
-
-{{ (lookup('file', 'inventory.yml') | from_yaml) |
-combine({ 'fruits': (lookup('file', 'inventory.yml') |
-from_yaml).fruits | map('lambda x: (x | 
-combine({"price": 0.60})) if x.name == "banana" else x') 
-| list }) }}
-
-
-        "{{ Status_var }}": >-
-          {{
-            (vars[Status_var]) | combine({
-              'archive': {
-                'jobs': {
-                  'joblist': (vars[Status_var]).archive.jobs.joblist 
-                             | map('lambda item: item | combine({"status": "inprogress"}) 
-                                   if item.name in (feature_list.archive.jobs.joblist | map(attribute="name") | list) 
-                                   else item')
-                             | list
-                }
-              }
-            })
-          }}
-
-
-
-
-    set_fact:
+    - name: Update the feature_status variable
+      set_fact:
         "{{ Status_var }}": >-
           {{
             vars[Status_var] | combine({
               Feature: {
                 'jobs': {
-                  'joblist': (
-                    vars[Status_var][Feature].jobs.joblist
-                    | map('combine', {
-                        'status': (
-                          'inprogress' if item.name == Jobset.name
-                          else item.status
-                        )
-                      })
-                    | list
-                  )
+                  'joblist': updated_feature_status
                 }
               }
             })
