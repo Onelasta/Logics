@@ -1,0 +1,5 @@
+          {{
+            (lookup('file', 'inventory.yml') | from_yaml) | combine({
+              'fruits': ((lookup('file', 'inventory.yml') | from_yaml).fruits | map('combine', {'price': 0.60} if item.name == 'banana' else item) | list)
+            })
+          }}
