@@ -1,0 +1,95 @@
+To read and process only new updates in a continuously growing text file (e.g., a log file that is appended by an Ansible task), you can use Python with the tail-like functionality. Python’s watchdog library or simply file.seek can help achieve this by keeping track of the file position.
+
+Here's how you can do it:
+
+Option 1: Using file.seek() in Python
+
+This approach reads only new data appended to the file by keeping track of the file pointer. Here’s a sample script:
+
+import time
+
+def tail_f(filename):
+    with open(filename, "r") as file:
+        file.seek(0, 2)  # Move the pointer to the end of the file
+        while True:
+            new_line = file.readline()
+            if not new_line:
+                time.sleep(0.1)  # Sleep briefly and continue
+                continue
+            process_line(new_line)
+
+def process_line(line):
+    # Your processing logic goes here
+    print(f"Processing line: {line.strip()}")
+
+# Usage
+tail_f("/path/to/your/file.log")
+
+Explanation
+
+file.seek(0, 2): Moves the file pointer to the end of the file to start reading only new additions.
+
+file.readline(): Reads new lines as they are added.
+
+time.sleep(0.1): Introduces a brief pause if there’s no new data, preventing a busy-wait loop.
+
+
+Option 2: Using the watchdog Library
+
+If you want a more event-driven approach, the watchdog library can monitor file changes and read new lines only when changes are detected.
+
+1. Install watchdog:
+
+pip install watchdog
+
+
+2. Use Watchdog for File Monitoring:
+
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+import time
+
+class LogHandler(FileSystemEventHandler):
+    def __init__(self, filename):
+        super().__init__()
+        self.filename = filename
+        self.file = open(filename, "r")
+        self.file.seek(0, 2)  # Go to the end of file
+
+    def on_modified(self, event):
+        if event.src_path == self.filename:
+            for line in self.file:
+                process_line(line)
+
+def process_line(line):
+    # Your processing logic here
+    print(f"Processing line: {line.strip()}")
+
+def monitor_file(filename):
+    event_handler = LogHandler(filename)
+    observer = Observer()
+    observer.schedule(event_handler, path=filename, recursive=False)
+    observer.start()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
+
+# Usage
+monitor_file("/path/to/your/file.log")
+
+
+
+Explanation
+
+LogHandler: Defines what happens when the file is modified (appended).
+
+on_modified: Reads new lines when the file is modified.
+
+Observer: Watches for changes in the file and triggers the handler when a modification occurs.
+
+
+This setup allows you to handle new lines in real time as they are appended to the file.
+
