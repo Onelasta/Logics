@@ -13,29 +13,29 @@
     credential_name: "My Credential"
 
   tasks:
-    - name: Authenticate with Automation Controller
+    - name: Log in to AAP and retrieve session cookie
       ansible.builtin.uri:
-        url: "{{ controller_host }}/api/v2/tokens/"
+        url: "{{ controller_host }}/api/login/"
         method: POST
-        body_format: json
+        body_format: form-urlencoded
         body:
           username: "{{ controller_username }}"
           password: "{{ controller_password }}"
         headers:
-          Content-Type: application/json
+          Content-Type: application/x-www-form-urlencoded
         validate_certs: no
-      register: auth_response
+      register: login_response
 
-    - name: Set authentication token
+    - name: Extract session ID
       set_fact:
-        auth_token: "{{ auth_response.json.token }}"
+        session_cookie: "{{ login_response.cookies.sessionid }}"
 
     - name: Get Project ID
       ansible.builtin.uri:
         url: "{{ controller_host }}/api/v2/projects/?name={{ project_name }}"
         method: GET
         headers:
-          Authorization: "Bearer {{ auth_token }}"
+          Cookie: "sessionid={{ session_cookie }}"
         validate_certs: no
       register: project_response
 
@@ -44,7 +44,7 @@
         url: "{{ controller_host }}/api/v2/inventories/?name={{ inventory_name }}"
         method: GET
         headers:
-          Authorization: "Bearer {{ auth_token }}"
+          Cookie: "sessionid={{ session_cookie }}"
         validate_certs: no
       register: inventory_response
 
@@ -53,7 +53,7 @@
         url: "{{ controller_host }}/api/v2/credentials/?name={{ credential_name }}"
         method: GET
         headers:
-          Authorization: "Bearer {{ auth_token }}"
+          Cookie: "sessionid={{ session_cookie }}"
         validate_certs: no
       register: credential_response
 
@@ -62,7 +62,7 @@
         url: "{{ controller_host }}/api/v2/job_templates/"
         method: POST
         headers:
-          Authorization: "Bearer {{ auth_token }}"
+          Cookie: "sessionid={{ session_cookie }}"
           Content-Type: application/json
         body_format: json
         body:
