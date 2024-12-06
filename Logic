@@ -1,12 +1,81 @@
 ---
-- name: Execute CADISK jobs
+- name: Create Job Template in AAP
   hosts: localhost
-  vars_files:
-    - vars.yml  # The file where you keep your job definitions
+  gather_facts: false
+
+  vars:
+    controller_host: "https://controller.example.com"  # Update with your Automation Controller URL
+    controller_username: "admin"                       # Replace with your username
+    controller_password: "password"                   # Replace with your password
+    template_name: "Example Job Template"
+    project_name: "My Project"
+    inventory_name: "My Inventory"
+    credential_name: "My Credential"
 
   tasks:
-    - name: Run jobs
-      include_tasks: run_jobs.yml
-      loop: "{{ features_list.archive.jobs }}"
-      loop_control:
-        label: "{{ item if item is string else item.keys() | first }}"
+    - name: Authenticate with Automation Controller
+      ansible.builtin.uri:
+        url: "{{ controller_host }}/api/v2/tokens/"
+        method: POST
+        body_format: json
+        body:
+          username: "{{ controller_username }}"
+          password: "{{ controller_password }}"
+        headers:
+          Content-Type: application/json
+        validate_certs: no
+      register: auth_response
+
+    - name: Set authentication token
+      set_fact:
+        auth_token: "{{ auth_response.json.token }}"
+
+    - name: Get Project ID
+      ansible.builtin.uri:
+        url: "{{ controller_host }}/api/v2/projects/?name={{ project_name }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ auth_token }}"
+        validate_certs: no
+      register: project_response
+
+    - name: Get Inventory ID
+      ansible.builtin.uri:
+        url: "{{ controller_host }}/api/v2/inventories/?name={{ inventory_name }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ auth_token }}"
+        validate_certs: no
+      register: inventory_response
+
+    - name: Get Credential ID
+      ansible.builtin.uri:
+        url: "{{ controller_host }}/api/v2/credentials/?name={{ credential_name }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ auth_token }}"
+        validate_certs: no
+      register: credential_response
+
+    - name: Create Job Template
+      ansible.builtin.uri:
+        url: "{{ controller_host }}/api/v2/job_templates/"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ auth_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          name: "{{ template_name }}"
+          description: "This is an example job template."
+          job_type: "run"
+          inventory: "{{ inventory_response.json.results[0].id }}"
+          project: "{{ project_response.json.results[0].id }}"
+          playbook: "site.yml"  # Replace with your playbook name
+          credential: "{{ credential_response.json.results[0].id }}"
+        validate_certs: no
+      register: template_response
+
+    - name: Debug Job Template Response
+      debug:
+        var: template_response.json
