@@ -1,64 +1,26 @@
----
-- name: Create Job Template in AAP using Basic Authentication
-  hosts: localhost
-  gather_facts: false
+/* REXX program to read SMF Type 85, Subset 79 and extract ST78LXQT */
+ADDRESS TSO
+SMFDATASET = "'SYS1.MANx'"  /* Replace with your SMF dataset */
+ALLOC FI(SMF85IN) DA(&SMFDATASET) SHR REUSE
+"EXECIO * DISKR SMF85IN (STEM SMFREC."
+IF RC <> 0 THEN DO
+    SAY "ERROR: Unable to read SMF dataset"
+    EXIT RC
+END
 
-  vars:
-    controller_host: "https://controller.example.com"  # Update with your Automation Controller URL
-    controller_username: "admin"                       # Replace with your username
-    controller_password: "password"                   # Replace with your password
-    template_name: "Example Job Template"
-    project_name: "My Project"
-    inventory_name: "My Inventory"
-    credential_name: "My Credential"
+DO I = 1 TO SMFREC.0  /* Loop through the records */
+    LINE = SMFREC.I
+    TYPE = C2D(SUBSTR(LINE, 1, 1))  /* Extract SMF record type */
 
-  tasks:
-    - name: Get Project ID
-      ansible.builtin.uri:
-        url: "{{ controller_host }}/api/v2/projects/?name={{ project_name }}"
-        method: GET
-        headers:
-          Authorization: "Basic {{ (controller_username + ':' + controller_password) | b64encode }}"
-        validate_certs: no
-      register: project_response
+    IF TYPE = 85 THEN DO  /* Process Type 85 */
+        SUBTYPE = C2D(SUBSTR(LINE, 7, 2))  /* Extract subtype */
+        IF SUBTYPE = 79 THEN DO  /* Check for subset 79 */
+            LXQT_OFFSET = 60  /* Approximate offset of ST78LXQT field */
+            ST78LXQT = C2D(SUBSTR(LINE, LXQT_OFFSET, 4))  /* Extract field */
+            SAY "ST78LXQT Value: " ST78LXQT
+        END
+    END
+END
 
-    - name: Get Inventory ID
-      ansible.builtin.uri:
-        url: "{{ controller_host }}/api/v2/inventories/?name={{ inventory_name }}"
-        method: GET
-        headers:
-          Authorization: "Basic {{ (controller_username + ':' + controller_password) | b64encode }}"
-        validate_certs: no
-      register: inventory_response
-
-    - name: Get Credential ID
-      ansible.builtin.uri:
-        url: "{{ controller_host }}/api/v2/credentials/?name={{ credential_name }}"
-        method: GET
-        headers:
-          Authorization: "Basic {{ (controller_username + ':' + controller_password) | b64encode }}"
-        validate_certs: no
-      register: credential_response
-
-    - name: Create Job Template
-      ansible.builtin.uri:
-        url: "{{ controller_host }}/api/v2/job_templates/"
-        method: POST
-        headers:
-          Authorization: "Basic {{ (controller_username + ':' + controller_password) | b64encode }}"
-          Content-Type: application/json
-        body_format: json
-        body:
-          name: "{{ template_name }}"
-          description: "This is an example job template."
-          job_type: "run"
-          inventory: "{{ inventory_response.json.results[0].id }}"
-          project: "{{ project_response.json.results[0].id }}"
-          playbook: "site.yml"  # Replace with your playbook name
-          credential: "{{ credential_response.json.results[0].id }}"
-        validate_certs: no
-      register: template_response
-
-    - name: Debug Job Template Response
-      debug:
-        var: template_response.json
+"FREE FI(SMF85IN)"
+EXIT 0
