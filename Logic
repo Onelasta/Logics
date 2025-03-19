@@ -1,26 +1,54 @@
-/* REXX program to read SMF Type 85, Subset 79 and extract ST78LXQT */
-ADDRESS TSO
-SMFDATASET = "'SYS1.MANx'"  /* Replace with your SMF dataset */
-ALLOC FI(SMF85IN) DA(&SMFDATASET) SHR REUSE
-"EXECIO * DISKR SMF85IN (STEM SMFREC."
-IF RC <> 0 THEN DO
-    SAY "ERROR: Unable to read SMF dataset"
-    EXIT RC
-END
+pipeline {
+    agent any
 
-DO I = 1 TO SMFREC.0  /* Loop through the records */
-    LINE = SMFREC.I
-    TYPE = C2D(SUBSTR(LINE, 1, 1))  /* Extract SMF record type */
+    stages {
+        stage('Input Stage') {
+            steps {
+                script {
+                    // Define the first parameter with choices
+                    def firstChoice = input(
+                        message: 'Select the environment:',
+                        parameters: [
+                            choice(name: 'ENVIRONMENT', choices: ['Development', 'Staging', 'Production'], description: 'Select the environment')
+                        ]
+                    )
 
-    IF TYPE = 85 THEN DO  /* Process Type 85 */
-        SUBTYPE = C2D(SUBSTR(LINE, 7, 2))  /* Extract subtype */
-        IF SUBTYPE = 79 THEN DO  /* Check for subset 79 */
-            LXQT_OFFSET = 60  /* Approximate offset of ST78LXQT field */
-            ST78LXQT = C2D(SUBSTR(LINE, LXQT_OFFSET, 4))  /* Extract field */
-            SAY "ST78LXQT Value: " ST78LXQT
-        END
-    END
-END
+                    // Conditionally define the second parameter based on the first choice
+                    def secondChoice
+                    if (firstChoice == 'Development') {
+                        secondChoice = input(
+                            message: 'Select the feature for Development:',
+                            parameters: [
+                                choice(name: 'FEATURE', choices: ['Feature A', 'Feature B'], description: 'Select the feature for Development')
+                            ]
+                        )
+                    } else if (firstChoice == 'Staging') {
+                        secondChoice = input(
+                            message: 'Select the feature for Staging:',
+                            parameters: [
+                                choice(name: 'FEATURE', choices: ['Feature C', 'Feature D'], description: 'Select the feature for Staging')
+                            ]
+                        )
+                    } else if (firstChoice == 'Production') {
+                        secondChoice = input(
+                            message: 'Select the feature for Production:',
+                            parameters: [
+                                choice(name: 'FEATURE', choices: ['Feature E', 'Feature F'], description: 'Select the feature for Production')
+                            ]
+                        )
+                    }
+                    
+                    // Output the selected values for verification
+                    echo "Selected Environment: ${firstChoice}"
+                    echo "Selected Feature: ${secondChoice}"
+                }
+            }
+        }
 
-"FREE FI(SMF85IN)"
-EXIT 0
+        stage('Build') {
+            steps {
+                echo 'Build step running...'
+            }
+        }
+    }
+}
