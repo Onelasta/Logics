@@ -1,20 +1,100 @@
-    - name: Set the path to the joblist using Status_var and feature
-      set_fact:
-        joblist_var: "{{ vars[Status_var][feature]['jobs']['joblist'] }}"
+import requests
+import time
+from requests.auth import HTTPBasicAuth
 
-    - name: Update job status to 'inprogress' for matching jobset.name
-      set_fact:
-        updated_joblist: >-
-          {{
-            joblist_var | map(
-              'combine', 
-              {'status': 'inprogress'}
-            ) if item.name == jobset.name else item
-          }}
-      loop: "{{ joblist_var }}"
-      loop_control:
-        loop_var: item
+# z/OSMF URL and credentials
+zosmf_url = "https://zosmf.example.com:8443"  # Replace with your z/OSMF URL
+username = "your_username"  # Replace with your z/OSMF username
+password = "your_password"  # Replace with your z/OSMF password
 
-    - name: Update the original feature_status with the new joblist
-      set_fact:
-        "{{ Status_var }}": "{{ vars[Status_var] | combine({feature: { 'jobs': { 'joblist': updated_joblist }}}) }}"
+# Define Job Details
+job_data = {
+    "jobname": "MYJOB",
+    "jobclass": "A",
+    "userid": "user",  # Replace with your z/OS username
+    "jecl": """//MYJOB JOB (ACCT),'JOBNAME',CLASS=A,MSGCLASS=A
+//STEP1 EXEC PGM=IEFBR14
+//SYSOUT DD SYSOUT=*"""
+}
+
+# 1. Submit the job to z/OSMF
+def submit_job():
+    try:
+        response = requests.post(
+            f"{zosmf_url}/zosmf/rest/v1/jobs",
+            json=job_data,
+            auth=HTTPBasicAuth(username, password),
+            verify=False  # Disable SSL verification for testing; set to True in production
+        )
+
+        if response.status_code == 201:
+            print("Job submitted successfully.")
+            job_info = response.json()
+            return job_info['jobId']
+        else:
+            print(f"Error submitting job: {response.status_code}")
+            print(response.text)
+            return None
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+# 2. Wait for the job to complete
+def wait_for_job_completion(job_id):
+    try:
+        job_status = ""
+        while job_status not in ["COMPLETED", "ABENDED"]:
+            time.sleep(10)  # Wait for 10 seconds before polling again
+            response = requests.get(
+                f"{zosmf_url}/zosmf/rest/v1/jobs/{job_id}/status",
+                auth=HTTPBasicAuth(username, password),
+                verify=False  # Disable SSL verification for testing; set to True in production
+            )
+
+            if response.status_code == 200:
+                job_info = response.json()
+                job_status = job_info['status']
+                print(f"Current job status: {job_status}")
+            else:
+                print(f"Error retrieving job status: {response.status_code}")
+                print(response.text)
+                break
+
+        return job_status
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+# 3. Retrieve the job's output
+def get_job_output(job_id):
+    try:
+        response = requests.get(
+            f"{zosmf_url}/zosmf/rest/v1/jobs/{job_id}/output",
+            auth=HTTPBasicAuth(username, password),
+            verify=False  # Disable SSL verification for testing; set to True in production
+        )
+
+        if response.status_code == 200:
+            job_output = response.text
+            print("Job Output:")
+            print(job_output)
+        else:
+            print(f"Error retrieving job output: {response.status_code}")
+            print(response.text)
+    except Exception as e:
+        print(f"Error: {e}")
+
+# Main function to execute the entire process
+def main():
+    job_id = submit_job()
+    if job_id:
+        job_status = wait_for_job_completion(job_id)
+        if job_status == "COMPLETED":
+            get_job_output(job_id)
+        else:
+            print(f"Job {job_id} did not complete successfully. Status: {job_status}")
+    else:
+        print("Failed to submit the job.")
+
+if __name__ == "__main__":
+    main()
