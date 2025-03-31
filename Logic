@@ -30,12 +30,10 @@ class JobLog:
         # Step-level execution data (from active job responses)
         self.step_data: List[Dict] = []
 
-        # Spool output: stepname# → procstep → ddname → { meta, lines }
-        self.output: Dict[str, Dict[str, Dict[str, Dict[str, any]]]] = defaultdict(
+        # Final structure: stepname#id → procstep → ddname → lines
+        self.output: Dict[str, Dict[str, Dict[str, List[str]]]] = defaultdict(
             lambda: defaultdict(dict)
         )
-
-        self._step_counter = defaultdict(int)
 
     @classmethod
     def from_job_status(cls, data: Dict) -> "JobLog":
@@ -63,29 +61,25 @@ class JobLog:
     def add_spool_metadata(self, spool_list: List[Dict]):
         for entry in spool_list:
             stepname_raw = entry.get("stepname", "NOSTEP")
-            self._step_counter[stepname_raw] += 1
-            stepname_key = f"{stepname_raw}#{self._step_counter[stepname_raw]}"
-
+            stepname_key = f"{stepname_raw}#{entry['id']}"
             procstep = entry.get("procstep") or "NOPROC"
             ddname = entry["ddname"]
 
-            self.output[stepname_key][procstep][ddname] = {
-                "meta": entry,
-                "lines": [],
-            }
+            # Initialize as empty list
+            self.output[stepname_key][procstep][ddname] = []
 
     def add_spool_content(self, stepname_key: str, procstep: str, ddname: str, content: str | List[str]):
         if isinstance(content, str):
             content = content.splitlines()
 
         try:
-            self.output[stepname_key][procstep][ddname]["lines"] = content
+            self.output[stepname_key][procstep][ddname] = content
         except KeyError:
-            raise ValueError(f"Spool metadata not found for {stepname_key}/{procstep}/{ddname}")
+            raise ValueError(f"No entry found for {stepname_key}/{procstep}/{ddname}")
 
     def get_log(self, stepname_key: str, procstep: str, ddname: str) -> List[str]:
         try:
-            return self.output[stepname_key][procstep][ddname]["lines"]
+            return self.output[stepname_key][procstep][ddname]
         except KeyError:
             raise ValueError(f"No log found for {stepname_key}/{procstep}/{ddname}")
 
