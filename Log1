@@ -1,38 +1,108 @@
----
-- name: Process Job (String or Dict)
-  block:
-    - name: Set job name
-      set_fact:
-        job_name: "{{ item if item is string else item.keys() | first }}"
-        job_data: "{{ item if item is string else item[job_name] }}"
+from typing import List, Dict, Optional
 
-    - name: Wait for dependencies to be completed
-      when: job_data is not string and job_data.dependency is defined
-      block:
-        - name: Check if dependency jobs are completed
-          command: "echo {{ item }}"
-          loop: "{{ job_data.dependency }}"
-          register: dependency_status
 
-        - name: Fail if any dependency is not completed
-          fail:
-            msg: "Dependency job {{ item.item }} has not been completed."
-          when: dependency_status.results | selectattr('rc', 'ne', 0) | list
+class ZOSJobResult:
+    def __init__(self, job_data: dict):
+        self.job_data = job_data
+        self.dd_lookup = self._build_dd_lookup()
 
-    - name: Execute predecessor scripts if available
-      when: job_data is not string and job_data.predecessor_script is defined
-      block:
-        - name: Run predecessor script
-          command: "python3 {{ item.split(':')[0] }}"
-          loop: "{{ job_data.predecessor_script | dict2items | map(attribute='key') | list }}"
+    def _build_dd_lookup(self) -> Dict[str, Dict[str, Dict[str, List[str]]]]:
+        lookup = {}
+        for dd in self.job_data.get("ddnames", []):
+            step = dd.get("stepname", "") or "NO_STEP"
+            proc = dd.get("procstep", "") or "NO_PROC"
+            ddname = dd.get("ddname", "")
+            content = dd.get("content", [])
+            lookup.setdefault(step, {}).setdefault(proc, {})[ddname] = content
+        return lookup
 
-    - name: Execute the main job
-      when: item is string or (job_data is not string and job_data.predecessor_script is not defined)
-      command: "echo Running job {{ job_name }}"
+    def get_dd_output(self, stepname: str, procstep: str, ddname: str) -> Optional[List[str]]:
+        return self.dd_lookup.get(stepname, {}).get(procstep, {}).get(ddname)
 
-    - name: Execute successor scripts if available
-      when: job_data is not string and job_data.successor_script is defined
-      block:
-        - name: Run successor script
-          command: "python3 {{ item.split(':')[0] }}"
-          loop: "{{ job_data.successor_script | dict2items | map(attribute='key') | list }}"
+    def has_message(self, message: str) -> bool:
+        return any(
+            message in line
+            for step in self.dd_lookup.values()
+            for proc in step.values()
+            for dd_content in proc.values()
+            for line in dd_content
+        )
+
+    def find_value(self, value: str) -> List[str]:
+        result = []
+        for step in self.dd_lookup.values():
+            for proc in step.values():
+                for dd_content in proc.values():
+                    result.extend([line for line in dd_content if value in line])
+        return result
+
+    def has_multiline_message(self, message: str, stepname: Optional[str] = None,
+                               procstep: Optional[str] = None, ddname: Optional[str] = None) -> bool:
+        """
+        Check if a multi-line message exists in the given DD content or across all DDs.
+
+        If stepname/procstep/ddname are provided, check only that DD.
+        Otherwise, search across all DDs.
+        """
+        def dd_content_to_string(dd_lines: List[str]) -> str:
+            return "\n".join(dd_lines)
+
+        # Narrowed search
+        if stepname and procstep and ddname:
+            dd_lines = self.get_dd_output(stepname, procstep, ddname)
+            if dd_lines:
+                content_str = dd_content_to_string(dd_lines)
+                return message in content_str
+            return False
+
+        # Global search across all DDs
+        for step in self.dd_lookup.values():
+            for proc in step.values():
+                for dd_lines in proc.values():
+                    content_str = dd_content_to_string(dd_lines)
+                    if message in content_str:
+                        return True
+        return False
+
+    def get_return_code(self) -> int:
+        return self.job_data.get("ret_code", {}).get("code", -1)
+
+    def get_step_return_codes(self) -> Dict[str, int]:
+        return {
+            step.get("step_name"): step.get("step_cc", -1)
+            for step in self.job_data.get("ret_code", {}).get("steps", [])
+        }
+
+    def get_job_info(self) -> dict:
+        return {
+            "job_name": self.job_data.get("job_name"),
+            "job_id": self.job_data.get("job_id"),
+            "owner": self.job_data.get("owner"),
+            "system": self.job_data.get("system"),
+            "class": self.job_data.get("class"),
+            "ret_code": self.get_return_code(),
+        }
+
+
+class ZOSJobGroup:
+    def __init__(self, response_data: dict):
+        self.failed = response_data.get("failed", False)
+        self.owner = response_data.get("owner", "")
+        self.jobs: List[ZOSJobResult] = [ZOSJobResult(job) for job in response_data.get("jobs", [])]
+
+    def get_all_job_ids(self) -> List[str]:
+        return [job.get_job_info()["job_id"] for job in self.jobs]
+
+    def find_job_by_id(self, job_id: str) -> Optional[ZOSJobResult]:
+        return next((job for job in self.jobs if job.get_job_info()["job_id"] == job_id), None)
+
+    def has_any_failed(self) -> bool:
+        return any(job.get_return_code() != 0 for job in self.jobs)
+
+    def get_all_ddnames(self) -> List[str]:
+        ddnames = []
+        for job in self.jobs:
+            for step in job.dd_lookup.values():
+                for proc in step.values():
+                    ddnames.extend(proc.keys())
+        return ddnames
