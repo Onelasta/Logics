@@ -1,97 +1,28 @@
-from collections import defaultdict
-from typing import Dict, List, Optional
+from selenium import webdriver
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.common.by import By
+import time
 
+# Optional: specify the path to geckodriver.exe
+geckodriver_path = "C:\\path\\to\\geckodriver.exe"
 
-class JobLog:
-    def __init__(self, jobname: str, jobid: str):
-        self.jobname = jobname
-        self.jobid = jobid
+# Set up Firefox driver
+service = Service(executable_path=geckodriver_path)
+driver = webdriver.Firefox(service=service)
 
-        # Basic metadata
-        self.retcode: Optional[str] = None
-        self.status: Optional[str] = None
-        self.owner: Optional[str] = None
-        self.exec_start: Optional[str] = None
-        self.exec_end: Optional[str] = None
-        self.exec_submitted: Optional[str] = None
+try:
+    # Open a website
+    driver.get("https://www.example.com")
 
-        # Additional job tracking info
-        self.subsystem: Optional[str] = None
-        self.job_type: Optional[str] = None
-        self.job_class: Optional[str] = None
-        self.job_correlator: Optional[str] = None
-        self.phase: Optional[int] = None
-        self.phase_name: Optional[str] = None
-        self.exec_system: Optional[str] = None
-        self.exec_member: Optional[str] = None
-        self.files_url: Optional[str] = None
-        self.url: Optional[str] = None
+    # Wait for 5 seconds
+    time.sleep(5)
 
-        # Step-level execution data (from active job responses)
-        self.step_data: List[Dict] = []
+    # Find an element (example: a heading) and print its text
+    heading = driver.find_element(By.TAG_NAME, "h1")
+    print("Heading text:", heading.text)
 
-        # Final structure: stepname#id → procstep → ddname → lines
-        self.output: Dict[str, Dict[str, Dict[str, List[str]]]] = defaultdict(
-            lambda: defaultdict(dict)
-        )
+    # Do more automation as needed...
 
-    @classmethod
-    def from_job_status(cls, data: Dict) -> "JobLog":
-        obj = cls(data["jobname"], data["jobid"])
-        obj.retcode = data.get("retcode")
-        obj.status = data.get("status")
-        obj.owner = data.get("owner")
-        obj.exec_start = data.get("exec-started")
-        obj.exec_end = data.get("exec-ended")
-        obj.exec_submitted = data.get("exec-submitted")
-
-        obj.subsystem = data.get("subsystem")
-        obj.job_type = data.get("type")
-        obj.job_class = data.get("class")
-        obj.job_correlator = data.get("job-correlator")
-        obj.phase = data.get("phase")
-        obj.phase_name = data.get("phase-name")
-        obj.exec_system = data.get("exec-system")
-        obj.exec_member = data.get("exec-member")
-        obj.files_url = data.get("files-url")
-        obj.url = data.get("url")
-        obj.step_data = data.get("step-data", [])
-        return obj
-
-    def add_spool_metadata(self, spool_list: List[Dict]):
-        for entry in spool_list:
-            stepname_raw = entry.get("stepname", "NOSTEP")
-            stepname_key = f"{stepname_raw}#{entry['id']}"
-            procstep = entry.get("procstep") or "NOPROC"
-            ddname = entry["ddname"]
-
-            # Initialize as empty list
-            self.output[stepname_key][procstep][ddname] = []
-
-    def add_spool_content(self, stepname_key: str, procstep: str, ddname: str, content: str | List[str]):
-        if isinstance(content, str):
-            content = content.splitlines()
-
-        try:
-            self.output[stepname_key][procstep][ddname] = content
-        except KeyError:
-            raise ValueError(f"No entry found for {stepname_key}/{procstep}/{ddname}")
-
-    def get_log(self, stepname_key: str, procstep: str, ddname: str) -> List[str]:
-        try:
-            return self.output[stepname_key][procstep][ddname]
-        except KeyError:
-            raise ValueError(f"No log found for {stepname_key}/{procstep}/{ddname}")
-
-    def list_all(self) -> List[tuple]:
-        return [
-            (step, proc, dd)
-            for step, procs in self.output.items()
-            for proc, dds in procs.items()
-            for dd in dds
-        ]
-
-    def __repr__(self):
-        return (
-            f"<JobLog {self.jobname}({self.jobid}) - {len(self.list_all())} logs loaded>"
-        )
+finally:
+    # Close the browser
+    driver.quit()
