@@ -1,28 +1,32 @@
-from selenium import webdriver
-from selenium.webdriver.firefox.service import Service
-from selenium.webdriver.common.by import By
-import time
+import re
+from datetime import datetime, timedelta
 
-# Optional: specify the path to geckodriver.exe
-geckodriver_path = "C:\\path\\to\\geckodriver.exe"
+def verify_all_expdrs(data):
+    pattern = re.compile(r'DSN=(\S+).*?EXPDR=(\S+)\s+CDATE=(\S+)', re.DOTALL)
+    entries = pattern.findall(data)
 
-# Set up Firefox driver
-service = Service(executable_path=geckodriver_path)
-driver = webdriver.Firefox(service=service)
+    for dsn, expdr, cdate in entries:
+        # Rule 1: RP#
+        if 'RP#' in dsn:
+            if expdr != 'STATS/001':
+                return False
 
-try:
-    # Open a website
-    driver.get("https://www.example.com")
+        # Rule 2: RP<number>
+        elif match := re.search(r'RP(\d+)', dsn):
+            try:
+                days = int(match.group(1))
+                cdate_obj = datetime.strptime(cdate, "%d/%m/%Y")
+                expected_expdr = (cdate_obj + timedelta(days=days)).strftime("%d/%m/%Y")
+                if expdr != expected_expdr:
+                    return False
+            except ValueError:
+                return False
 
-    # Wait for 5 seconds
-    time.sleep(5)
+        # Rule 3: CRDDMMYY → EXPDR must be DD/MM/20YY
+        elif match := re.search(r'CR(\d{2})(\d{2})(\d{2})', dsn):
+            dd, mm, yy = match.groups()
+            expected_expdr = f"{dd}/{mm}/20{yy}"
+            if expdr != expected_expdr:
+                return False
 
-    # Find an element (example: a heading) and print its text
-    heading = driver.find_element(By.TAG_NAME, "h1")
-    print("Heading text:", heading.text)
-
-    # Do more automation as needed...
-
-finally:
-    # Close the browser
-    driver.quit()
+    return True
