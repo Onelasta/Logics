@@ -2,3 +2,8 @@ label_xpath = "//label[normalize-space(text())='Record Type']/following::input[@
 dropdown_input = WebDriverWait(driver, 10).until(
     EC.element_to_be_clickable((By.XPATH, label_xpath))
 )
+
+option = WebDriverWait(driver, 10).until(
+    EC.element_to_be_clickable((By.XPATH, "//li[contains(@class, 'select2-results__option') and text()='A Record']"))
+)
+option.click()
