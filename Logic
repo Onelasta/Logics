@@ -1,32 +1,4 @@
-import re
-from datetime import datetime, timedelta
-
-def verify_all_expdrs(data):
-    pattern = re.compile(r'DSN=(\S+).*?EXPDR=(\S+)\s+CDATE=(\S+)', re.DOTALL)
-    entries = pattern.findall(data)
-
-    for dsn, expdr, cdate in entries:
-        # Rule 1: RP#
-        if 'RP#' in dsn:
-            if expdr != 'STATS/001':
-                return False
-
-        # Rule 2: RP<number>
-        elif match := re.search(r'RP(\d+)', dsn):
-            try:
-                days = int(match.group(1))
-                cdate_obj = datetime.strptime(cdate, "%d/%m/%Y")
-                expected_expdr = (cdate_obj + timedelta(days=days)).strftime("%d/%m/%Y")
-                if expdr != expected_expdr:
-                    return False
-            except ValueError:
-                return False
-
-        # Rule 3: CRDDMMYY → EXPDR must be DD/MM/20YY
-        elif match := re.search(r'CR(\d{2})(\d{2})(\d{2})', dsn):
-            dd, mm, yy = match.groups()
-            expected_expdr = f"{dd}/{mm}/20{yy}"
-            if expdr != expected_expdr:
-                return False
-
-    return True
+label_xpath = "//label[normalize-space(text())='Record Type']/following::input[@type='text' and @role='combobox'][1]"
+dropdown_input = WebDriverWait(driver, 10).until(
+    EC.element_to_be_clickable((By.XPATH, label_xpath))
+)
